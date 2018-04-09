@@ -74,6 +74,7 @@ function rankVertices<V, E extends Edge<V>>(graph: Graph<V, E>): Map<V, number> 
 
 interface LevelNode<V> {
   parents: LevelNode<V>[]
+  children: LevelNode<V>[]
   vertex: V | null
   index: number
 }
@@ -115,7 +116,7 @@ function ranksToLevels<V, E extends Edge<V>>(ranks: Map<V, number>, edges: Set<E
   for (let [vertex, rank] of ranks) {
     minRank = Math.min(minRank, rank)
     maxRank = Math.max(maxRank, rank)
-    const levelNode = { parents: [], vertex, index: 0 }
+    const levelNode = { parents: [], children: [], vertex, index: 0 }
     vertexToLevelNode.set(vertex, levelNode)
     const levelNodeList = getOrInsert(rankToLevel, rank, makeEmpty)
     levelNodeList.push(levelNode)
@@ -159,12 +160,14 @@ function ranksToLevels<V, E extends Edge<V>>(ranks: Map<V, number>, edges: Set<E
     // to travel through without intersecting a visible node.
     for (let rank = fromRank + 1; rank < toRank; rank++) {
       const levelNodeList = getOrInsert(rankToLevel, rank, makeEmpty)
-      const levelNode = { parents: [parent], vertex: null, index: 0 }
+      const levelNode = { parents: [parent], children: [], vertex: null, index: 0 }
+      parent.children.push(levelNode)
       parent = levelNode
       levelNodeList.push(levelNode)
       levelNodesForEdge.push(levelNode)
     }
     toLevelNode.parents.push(parent)
+    parent.children.push(toLevelNode)
     levelNodesForEdge.push(toLevelNode)
     return levelNodesForEdge
   }
@@ -179,14 +182,27 @@ function ranksToLevels<V, E extends Edge<V>>(ranks: Map<V, number>, edges: Set<E
     levels.push(level)
   }
 
-  // Sort to minimize crossings
-  // TODO(jlfwong): It may be necessary to multiple passes of this?
-  function levelNodeWeight(n: LevelNode<V>) {
+  // Sort to minimize crossings.
+  // In each pass, we do two sorts: one by mean parent index,
+  // and one by mean child index. These two sorts may yield conflicting results,
+  // so we'll iteratively refine the ordering, hoping they'll converge.
+  function levelNodeParentWeight(n: LevelNode<V>) {
     return n.parents.reduce((accum: number, p: LevelNode<V>) => accum + p.index, 0) / n.parents.length
   }
-  for (let level of levels) {
-    sortBy(level, levelNodeWeight)
-    reindexLevel(level)
+  function levelNodeChildWeight(n: LevelNode<V>) {
+    return n.children.reduce((accum: number, p: LevelNode<V>) => accum + p.index, 0) / n.children.length
+  }
+  for (let pass = 0; pass < 4; pass++) {
+    // Moving from top to bottom, sort each level by the mean parent index.
+    for (let i = 0; i < levels.length; i++) {
+      sortBy(levels[i], levelNodeParentWeight)
+      reindexLevel(levels[i])
+    }
+    // Moving from bottom to top, sort each level by the mean child index.
+    for (let i = levels.length - 1; i >= 0; i--) {
+      sortBy(levels[i], levelNodeChildWeight)
+      reindexLevel(levels[i])
+    }
   }
 
   return { edgeToLevelNodes, levels }
@@ -206,22 +222,34 @@ function positionNodes<V>(levels: LevelNode<V>[][]): Map<LevelNode<V>, Rect> {
 
   let y = 0
   for (let level of levels) {
-    const count = level.length
-    const levelWidth = count * width + (count - 1) * horizontalSpacing
+    // Determine the width of the entire level to help
+    // center the entire level
+    let levelWidth = 0
+    for (let node of level) {
+      if (levelWidth > 0) levelWidth += horizontalSpacing
+      if (node.vertex) {
+        levelWidth += width
+      } else {
+        levelWidth += horizontalSpacing
+      }
+    }
+
     let x = totalWidth / 2 - levelWidth / 2
     for (let node of level) {
       if (!node.vertex) {
         positions.set(node, new Rect(
-          new Vec2(x + width / 2, y + height / 2),
+          new Vec2(x + horizontalSpacing / 2, y + height / 2),
           new Vec2(0, 0)
         ))
+        x += horizontalSpacing
       } else {
         positions.set(node, new Rect(
           new Vec2(x, y),
           new Vec2(width, height)
         ))
+        x += width
       }
-      x += width + horizontalSpacing
+      x += horizontalSpacing
     }
     y += height + verticalSpacing
   }
@@ -235,11 +263,16 @@ function makeEdgePaths<V, E extends Edge<V>>(edgeToLevelNodes: Map<E, LevelNode<
     let from = nodeList[0]
     let path = ''
 
+    const fromRect = positions.get(from)
+    if (!fromRect) throw Error(`Failed to find position for endpoint ${from}`)
+    let fromAnchor = new Vec2(fromRect.left() + fromRect.width() / 2, fromRect.top())
+    fromAnchor = fromAnchor.plus(new Vec2(0, fromRect.height()))
+    path += `M ${fromAnchor.x} ${fromAnchor.y} `
+
     for (let i = 1; i < nodeList.length; i++) {
       const to = nodeList[i]
       const fromRect = positions.get(from)
       const toRect = positions.get(to)
-
       if (!fromRect) throw Error(`Failed to find position for endpoint ${from}`)
       if (!toRect) throw Error(`Failed to find position for endpoint ${to}`)
 
@@ -252,7 +285,10 @@ function makeEdgePaths<V, E extends Edge<V>>(edgeToLevelNodes: Map<E, LevelNode<
         toAnchor = toAnchor.plus(new Vec2(0, toRect.height()))
       }
 
-      path += `M ${fromAnchor.x} ${fromAnchor.y} L ${toAnchor.x} ${toAnchor.y}`
+      const midpoint = fromAnchor.plus(toAnchor).times(1/2)
+
+      path += `S ${midpoint.x} ${midpoint.y} `
+      path += `${toAnchor.x} ${toAnchor.y} `
 
       from = to
     }
@@ -283,14 +319,15 @@ edge(A, B)
 edge(A, E)
 edge(B, C)
 edge(D, H)
+edge(E, D)
 edge(A, F)
 edge(E, G)
 edge(F, G)
 edge(C, D)
 edge(G, H)
-edge(B, A)
 edge(F, H)
 edge(C, H)
+edge(B, F)
 edge(A, H)
 edge(B, H)
 
@@ -325,7 +362,8 @@ export class CallGraphView extends Component<{}, {}> {
         const path = edgePaths.get(e) || ''
         return <path d={path} style={{
           strokeWeight: 2,
-          stroke: '#000000'
+          stroke: '#000000',
+          fill: 'none'
         }} />
       }))}
     </svg>
