@@ -2,6 +2,10 @@ import { h, Component } from 'preact'
 import { getOrInsert, getOrElse, itForEach, itMap, sortBy } from './utils'
 import { Rect, Vec2 } from './math'
 
+// This is an implementation of a direct graph layout algorithm
+// described in "A Technique for Drawing Directed Graphs":
+// http://www.graphviz.org/Documentation/TSE93.pdf
+
 // Generic Directed Graph
 interface Edge<V> {
   from: V,
@@ -80,10 +84,18 @@ function reindexLevel<V>(level: LevelNode<V>[]) {
 }
 
 interface LevelResult<V, E> {
+  // The top-to-bottom ordered list of levels, where each level corresponds to a
+  // row in the laid-out graph. Each level is an ordered list of the left-to-right
+  // nodes which may be visible or virtual nodes.
   levels: LevelNode<V>[][]
+
+  // Mapping from each edge to an ordered list of nodes indicating the bounding
+  // boxes the edge must traverse when the edge is drawn. The first and last node
+  // in each list will always be visible nodes. The intermediate nodes will be
+  // zero or more "virtual nodes" which exist solely for layout.
   edgeToLevelNodes: Map<E, LevelNode<V>[]>
 }
-// Given the ranks of the vertex & the edges in the graph, fill
+// Given the ranks of the vertices & the edges in the graph, fill
 // rows with vertices & "virtual nodes" to allow space for edges
 // which traverse multiple rows. It's also in this step in which
 // we'll order the nodes in each row in order to minimize edge crossings
@@ -91,7 +103,7 @@ interface LevelResult<V, E> {
 function ranksToLevels<V, E extends Edge<V>>(ranks: Map<V, number>, edges: Set<E>): LevelResult<V, E> {
   const levels: LevelNode<V>[][] = []
 
-  const rankToLevelNode = new Map<number, LevelNode<V>[]>()
+  const rankToLevel = new Map<number, LevelNode<V>[]>()
 
   const vertexToLevelNode = new Map<V, LevelNode<V>>()
   const edgeToLevelNodes = new Map<E, LevelNode<V>[]>()
@@ -105,7 +117,7 @@ function ranksToLevels<V, E extends Edge<V>>(ranks: Map<V, number>, edges: Set<E
     maxRank = Math.max(maxRank, rank)
     const levelNode = { parents: [], vertex, index: 0 }
     vertexToLevelNode.set(vertex, levelNode)
-    const levelNodeList = getOrInsert(rankToLevelNode, rank, makeEmpty)
+    const levelNodeList = getOrInsert(rankToLevel, rank, makeEmpty)
     levelNodeList.push(levelNode)
   }
 
@@ -124,7 +136,6 @@ function ranksToLevels<V, E extends Edge<V>>(ranks: Map<V, number>, edges: Set<E
     }
 
     if (toRank === fromRank) {
-      console.log(from, to, toRank, fromRank)
       throw new Error(`Found sideways edge: ${from} -> ${to}`)
     } else if (toRank < fromRank) {
       // Back edge
@@ -142,9 +153,14 @@ function ranksToLevels<V, E extends Edge<V>>(ranks: Map<V, number>, edges: Set<E
 
     const levelNodesForEdge = [fromLevelNode]
     let parent = fromLevelNode
+
+    // Insert virtual nodes on every level between the levels of the source
+    // and destination of the edge to ensure that there's space for the edge
+    // to travel through without intersecting a visible node.
     for (let rank = fromRank + 1; rank < toRank; rank++) {
-      const levelNodeList = getOrInsert(rankToLevelNode, rank, makeEmpty)
-      const levelNode = { parents: [], vertex: null, index: 0 }
+      const levelNodeList = getOrInsert(rankToLevel, rank, makeEmpty)
+      const levelNode = { parents: [parent], vertex: null, index: 0 }
+      parent = levelNode
       levelNodeList.push(levelNode)
       levelNodesForEdge.push(levelNode)
     }
@@ -158,7 +174,7 @@ function ranksToLevels<V, E extends Edge<V>>(ranks: Map<V, number>, edges: Set<E
   })
 
   for (let rank = minRank; rank <= maxRank; rank++) {
-    const level = getOrElse(rankToLevelNode, rank, makeEmpty)
+    const level = getOrElse(rankToLevel, rank, makeEmpty)
     reindexLevel(level)
     levels.push(level)
   }
@@ -221,8 +237,11 @@ function makeEdgePaths<V, E extends Edge<V>>(edgeToLevelNodes: Map<E, LevelNode<
 
     for (let i = 1; i < nodeList.length; i++) {
       const to = nodeList[i]
-      const fromRect = positions.get(from) || new Rect()
-      const toRect = positions.get(to) || new Rect()
+      const fromRect = positions.get(from)
+      const toRect = positions.get(to)
+
+      if (!fromRect) throw Error(`Failed to find position for endpoint ${from}`)
+      if (!toRect) throw Error(`Failed to find position for endpoint ${to}`)
 
       let fromAnchor = new Vec2(fromRect.left() + fromRect.width() / 2, fromRect.top())
       let toAnchor = new Vec2(toRect.left() + toRect.width() / 2, toRect.top())
@@ -246,12 +265,12 @@ function makeEdgePaths<V, E extends Edge<V>>(edgeToLevelNodes: Map<E, LevelNode<
 interface CallGraphVertex {
   name: string
 }
-interface CallGraphEdge extends Edge<CallGraphVertex> {
-  from: CallGraphVertex
-  to: CallGraphVertex
-}
+interface CallGraphEdge extends Edge<CallGraphVertex> {}
 
 const graph = new Graph<CallGraphVertex, CallGraphEdge>()
+function edge(from: CallGraphVertex, to: CallGraphVertex) {
+  graph.addEdge({ from, to })
+}
 const A = { name: 'A' }
 const B = { name: 'B' }
 const C = { name: 'C' }
@@ -260,9 +279,6 @@ const E = { name: 'E' }
 const F = { name: 'F' }
 const G = { name: 'G' }
 const H = { name: 'H' }
-function edge(from: CallGraphVertex, to: CallGraphVertex) {
-  graph.addEdge({ from, to })
-}
 edge(A, B)
 edge(A, E)
 edge(B, C)
@@ -272,10 +288,12 @@ edge(E, G)
 edge(F, G)
 edge(C, D)
 edge(G, H)
-/*
-edge(A, B)
 edge(B, A)
-*/
+edge(F, H)
+edge(C, H)
+edge(A, H)
+edge(B, H)
+
 const ranks = rankVertices(graph)
 console.log(ranks)
 const levelResult = ranksToLevels(ranks, graph.getEdges())
@@ -290,7 +308,8 @@ export class CallGraphView extends Component<{}, {}> {
         return <g>
           {level.map(node => {
             if (!node.vertex) return null
-            const pos = positions.get(node) || new Rect()
+            const pos = positions.get(node)
+            if (!pos) throw new Error(`Failed to retrieve position for node ${node}`)
             return <g transform={`translate(${pos.left()}, ${pos.top() })`}>
               <rect x={0} y={0} width={pos.width()} height={pos.height()} style={{
                 fill: '#00FF00'

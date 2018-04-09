@@ -8,8 +8,9 @@ import {importFromChromeTimeline, importFromChromeCPUProfile} from './import/chr
 import { FlamechartRenderer } from './flamechart-renderer'
 import { CanvasContext } from './canvas-context'
 
-import {Profile, Frame} from './profile'
-import {Flamechart} from './flamechart'
+import { Profile, Frame } from './profile'
+import { Flamechart} from './flamechart'
+import { CallGraphView } from './call-graph-view'
 import { FlamechartView } from './flamechart-view'
 import { FontFamily, FontSize, Colors } from './style'
 
@@ -390,6 +391,8 @@ export class Application extends ReloadableComponent<{}, ApplicationState> {
     return <div onDrop={this.onDrop} onDragOver={this.onDragOver} className={css(style.root)}>
       <GLCanvas setCanvasContext={this.setCanvasContext} />
       <Toolbar setSortOrder={this.setSortOrder} {...this.state} />
+      {<CallGraphView />}
+      {/*
       {loading ?
         this.renderLoadingBar() :
         this.canvasContext && flamechartToView && flamechartRendererToUse ?
@@ -398,7 +401,7 @@ export class Application extends ReloadableComponent<{}, ApplicationState> {
             flamechartRenderer={flamechartRendererToUse}
             ref={this.flamechartRef}
             flamechart={flamechartToView} /> :
-          this.renderLanding()}
+          this.renderLanding()}*/}
     </div>
   }
 }
