@@ -1,70 +1,51 @@
 import { h, Component } from 'preact'
-import { itMap } from './utils'
-import { Graph, Edge, layoutGraph } from './graph-layout';
+import { itMap, lastOf } from './utils'
+import { LaidOutCallGraph, CallGraph } from './call-graph';
 
-interface CallGraphVertex {
-  name: string
+interface CallGraphViewProps {
+  callGraph: CallGraph
+  laidOutCallGraph: LaidOutCallGraph
 }
-interface CallGraphEdge extends Edge<CallGraphVertex> {}
 
-const graph = new Graph<CallGraphVertex, CallGraphEdge>()
-function edge(from: CallGraphVertex, to: CallGraphVertex) {
-  graph.addEdge({ from, to })
-}
-const A = { name: 'A' }
-const B = { name: 'B' }
-const C = { name: 'C' }
-const D = { name: 'D' }
-const E = { name: 'E' }
-const F = { name: 'F' }
-const G = { name: 'G' }
-const H = { name: 'H' }
-edge(A, B)
-edge(A, E)
-edge(B, C)
-edge(D, H)
-edge(E, D)
-edge(A, F)
-edge(E, G)
-edge(F, G)
-edge(C, D)
-edge(G, H)
-edge(F, H)
-edge(C, H)
-edge(B, F)
-edge(A, H)
-edge(B, H)
-
-const { levels, nodePositions, edgePaths } = layoutGraph(graph)
-
-export class CallGraphView extends Component<{}, {}> {
+export class CallGraphView extends Component<CallGraphViewProps, {}> {
   render() {
-    return <svg style={{ flex: 1 }}>
-      {levels.map(level => {
-        return <g>
-          {level.map(node => {
-            if (!node.vertex) return null
-            const pos = nodePositions.get(node)
-            if (!pos) throw new Error(`Failed to retrieve position for node ${node}`)
-            return <g transform={`translate(${pos.left()}, ${pos.top() })`}>
-              <rect x={0} y={0} width={pos.width()} height={pos.height()} style={{
-                fill: '#00FF00'
-              }} />
-              <text style={{
-                'alignment-baseline': 'hanging'
-              }} fill='#FF0000' > { node.vertex.name }</text>
-            </g>
-          })}
-        </g>
-      })}
-      {Array.from(itMap(graph.getEdges(), (e) => {
-        const path = edgePaths.get(e) || ''
-        return <path d={path} style={{
-          strokeWeight: 2,
-          stroke: '#000000',
-          fill: 'none'
-        }} />
-      }))}
-    </svg>
+    const { callGraph, laidOutCallGraph } = this.props
+    const { levels, nodePositions, edgePaths } = laidOutCallGraph
+
+    const height = levels.length * 100
+    const width = levels.reduce((max: number, level: any[]) => Math.max(level.length, max), 0) * 230
+
+    return <div style={{ overflow: 'scroll', height: '100vh', width: '100vw' }}>
+      <svg style={{ flex: 1 }} height={height} width={width}>
+        {levels.map(level => {
+          return <g>
+            {level.map(node => {
+              if (!node.vertex) return null
+              const pos = nodePositions.get(node)
+              if (!pos) throw new Error(`Failed to retrieve position for node ${node}`)
+              return <g transform={`translate(${pos.left()}, ${pos.top() })`}>
+                <rect x={0} y={0} width={pos.width()} height={pos.height()} style={{
+                  strokeWeight: 2,
+                  stroke: '#00FF00',
+                  fill: '#FFFFFF'
+                }} />
+                <text style={{
+                  'alignment-baseline': 'hanging',
+                  'font-size': '10px'
+                }} fill='#000000' > { `${node.vertex.frame.getTotalWeight()}: ${lastOf(node.vertex.frame.name.split('/'))}` }</text>
+              </g>
+            })}
+          </g>
+        })}
+        {Array.from(itMap(callGraph.getEdges(), (e) => {
+          const path = edgePaths.get(e) || ''
+          return <path d={path} style={{
+            strokeWeight: 2,
+            stroke: '#000000',
+            fill: 'none'
+          }} />
+        }))}
+      </svg>
+    </div>
   }
 }

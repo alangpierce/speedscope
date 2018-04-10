@@ -199,10 +199,10 @@ function ranksToLevels<V, E extends Edge<V>>(ranks: Map<V, number>, edges: Set<E
 function positionNodes<V>(levels: LevelNode<V>[][]): Map<LevelNode<V>, Rect> {
   const positions = new Map<LevelNode<V>, Rect>()
 
-  const width = 230 / 2
-  const height = 50 / 2
-  const verticalSpacing = 90 / 2
-  const horizontalSpacing = 50 / 2
+  const width = 200
+  const height = 20
+  const verticalSpacing = 10
+  const horizontalSpacing = 50
 
   const maxCount = levels.reduce((max, cur) => Math.max(max, cur.length), 0)
   const totalWidth = maxCount * width + (maxCount - 1) * horizontalSpacing

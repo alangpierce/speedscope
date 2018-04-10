@@ -13,6 +13,7 @@ import { Flamechart} from './flamechart'
 import { CallGraphView } from './call-graph-view'
 import { FlamechartView } from './flamechart-view'
 import { FontFamily, FontSize, Colors } from './style'
+import { CallGraph, LaidOutCallGraph } from './call-graph';
 
 
 declare function require(x: string): any
@@ -26,10 +27,16 @@ const enum ViewMode {
 
 interface ApplicationState {
   profile: Profile | null
+
   chronoFlamechart: Flamechart | null
   chronoFlamechartRenderer: FlamechartRenderer | null
+
   leftHeavyFlamegraph: Flamechart | null
   leftHeavyFlamegraphRenderer: FlamechartRenderer | null
+
+  callGraph: CallGraph | null
+  laidOutCallGraph: LaidOutCallGraph | null
+
   viewMode: ViewMode
   loading: boolean
 }
@@ -193,10 +200,16 @@ export class Application extends ReloadableComponent<{}, ApplicationState> {
     this.state = {
       loading: false,
       profile: null,
+
       chronoFlamechart: null,
       chronoFlamechartRenderer: null,
+
       leftHeavyFlamegraph: null,
       leftHeavyFlamegraphRenderer: null,
+
+      callGraph: null,
+      laidOutCallGraph: null,
+
       viewMode: ViewMode.CHRONO_FLAME_CHART
     }
   }
@@ -269,15 +282,29 @@ export class Application extends ReloadableComponent<{}, ApplicationState> {
     })
     const leftHeavyFlamegraphRenderer = new FlamechartRenderer(this.canvasContext, leftHeavyFlamegraph)
 
+    const callGraph = new CallGraph({
+      getTotalWeight: profile.getTotalNonIdleWeight.bind(profile),
+      forEachCall: profile.forEachCallGrouped.bind(profile),
+      formatValue: profile.formatValue.bind(profile),
+      getColorBucketForFrame
+    })
+    const laidOutCallGraph = callGraph.layout()
+
     console.timeEnd('import')
 
     console.time('first setState')
     this.setState({
       profile,
+
       chronoFlamechart,
       chronoFlamechartRenderer,
+
       leftHeavyFlamegraph,
       leftHeavyFlamegraphRenderer,
+
+      callGraph,
+      laidOutCallGraph,
+
       loading: false
     }, () => {
       console.timeEnd('first setState')
@@ -396,13 +423,7 @@ export class Application extends ReloadableComponent<{}, ApplicationState> {
   }
 
   renderContent() {
-    const {
-      chronoFlamechart,
-      chronoFlamechartRenderer,
-      leftHeavyFlamegraph,
-      leftHeavyFlamegraphRenderer,
-      viewMode,
-    } = this.state
+    const { viewMode } = this.state
 
     if (this.state.loading) {
       return this.renderLoadingBar()
@@ -418,6 +439,7 @@ export class Application extends ReloadableComponent<{}, ApplicationState> {
 
     switch (viewMode) {
       case ViewMode.CHRONO_FLAME_CHART: {
+        const { chronoFlamechart, chronoFlamechartRenderer } = this.state
         if (!chronoFlamechart || !chronoFlamechartRenderer) throw new Error('Missing dependencies for chrono flame chart')
         return <FlamechartView
           canvasContext={this.canvasContext}
@@ -426,6 +448,7 @@ export class Application extends ReloadableComponent<{}, ApplicationState> {
           flamechart={chronoFlamechart} />
       }
       case ViewMode.LEFT_HEAVY_FLAME_GRAPH: {
+        const { leftHeavyFlamegraph, leftHeavyFlamegraphRenderer } = this.state
         if (!leftHeavyFlamegraph || !leftHeavyFlamegraphRenderer) throw new Error('Missing dependencies for left heavy flame graph')
         return <FlamechartView
           canvasContext={this.canvasContext}
@@ -434,8 +457,11 @@ export class Application extends ReloadableComponent<{}, ApplicationState> {
           flamechart={leftHeavyFlamegraph} />
       }
       case ViewMode.CALL_GRAPH: {
-        return <CallGraphView />
-        break;
+        const { callGraph, laidOutCallGraph } = this.state
+        if (!callGraph || !laidOutCallGraph) throw new Error('Missing dependencies for call graph view')
+        return <CallGraphView
+          callGraph={callGraph}
+          laidOutCallGraph={laidOutCallGraph} />
       }
     }
   }
