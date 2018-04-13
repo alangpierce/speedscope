@@ -1,5 +1,5 @@
 import { Graph, Edge, LaidOutGraph, layoutGraph } from './graph-layout'
-import { Frame, Profile, CallTreeNode } from './profile';
+import { Frame, CallTreeNode } from './profile';
 import { getOrInsert, lastOf } from './utils';
 
 interface CallGraphVertex {
@@ -25,6 +25,7 @@ interface CallGraphDataSource {
 // layout code.
 export class CallGraph extends Graph<CallGraphVertex, CallGraphEdge> {
   private frameToVertex = new Map<Frame, CallGraphVertex>()
+  private roots: CallGraphVertex[] = []
 
   constructor(private source: CallGraphDataSource) {
     super()
@@ -38,7 +39,7 @@ export class CallGraph extends Graph<CallGraphVertex, CallGraphEdge> {
     // When displaying the call graph, we don't really want to display all nodes.
     // We only want to display the ones that contribute significantly to the total
     // weight of the graph, so we set a threshold.
-    const threshold = 0
+    const threshold = 0.05
     let ignoredDepth = 0
 
     const openFrame = (node: CallTreeNode, value: number) => {
@@ -55,6 +56,9 @@ export class CallGraph extends Graph<CallGraphVertex, CallGraphEdge> {
       if (caller) {
         this.addEdge({ from: caller, to: vertex })
       }
+      if (stack.length === 0) {
+        this.roots.push(vertex)
+      }
       stack.push(vertex)
     }
 
@@ -70,6 +74,6 @@ export class CallGraph extends Graph<CallGraphVertex, CallGraphEdge> {
   }
 
   layout(): LaidOutCallGraph {
-    return layoutGraph(this)
+    return layoutGraph(this, this.roots)
   }
 }

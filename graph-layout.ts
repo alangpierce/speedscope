@@ -36,34 +36,21 @@ export class Graph<V, E extends Edge<V>> {
 
 // Determine the "rank" of each vertex. The rank of a vertex will determine
 // which row in the laid out graph the vertex is placed in.
-export function rankVertices<V, E extends Edge<V>>(graph: Graph<V, E>): Map<V, number> {
+export function rankVertices<V, E extends Edge<V>>(graph: Graph<V, E>, roots: V[]): Map<V, number> {
   const ranks = new Map<V, number>()
 
-  const visited = new Set<V>()
-  function getRank(v: V) {
-    if (visited.has(v)) {
-      if (ranks.has(v)) {
-        return ranks.get(v)!
-      }
+  function setRank(v: V, rank: number) {
+    if (ranks.has(v)) return
+    ranks.set(v, rank)
 
-      // If we've visited v, but it doesn't yet
-      // have a rank, it means there's a cycle.
-      // TODO(jlfwong): I'm not sure if returning -1
-      // here is correct
-      return -99
+    for (let leavingEdge of graph.getEdgesLeaving(v)) {
+      setRank(leavingEdge.to, rank + 1)
     }
-    visited.add(v)
-
-    let maxParentRank = -1
-    for (let enteringEdge of graph.getEdgesEntering(v)) {
-      maxParentRank = Math.max(getRank(enteringEdge.from), maxParentRank)
-    }
-    const vRank = maxParentRank + 1
-    ranks.set(v, vRank)
-    return vRank
   }
 
-  itForEach(graph.getVertices(), getRank)
+  for (let root of roots) {
+    setRank(root, 0)
+  }
   return ranks
 }
 
@@ -124,7 +111,8 @@ function ranksToLevels<V, E extends Edge<V>>(ranks: Map<V, number>, edges: Set<E
     }
 
     if (toRank === fromRank) {
-      throw new Error(`Found sideways edge: ${from} -> ${to}`)
+      // throw new Error(`Found sideways edge: ${from} -> ${to}`)
+      // TODO(jlfwong): Debug this
     } else if (toRank < fromRank) {
       // Back edge
       const nodes = handleEdge(to, from)
@@ -201,7 +189,7 @@ function positionNodes<V>(levels: LevelNode<V>[][]): Map<LevelNode<V>, Rect> {
 
   const width = 200
   const height = 20
-  const verticalSpacing = 10
+  const verticalSpacing = 30
   const horizontalSpacing = 50
 
   const maxCount = levels.reduce((max, cur) => Math.max(max, cur.length), 0)
@@ -274,8 +262,9 @@ function makeEdgePaths<V, E extends Edge<V>>(edgeToLevelNodes: Map<E, LevelNode<
 
       const midpoint = fromAnchor.plus(toAnchor).times(1/2)
 
-      path += `S ${midpoint.x} ${midpoint.y} `
-      path += `${toAnchor.x} ${toAnchor.y} `
+      // TODO(jlfwong): Figure out proper curvature
+      // path += `S ${midpoint.x} ${midpoint.y} `
+      path += `L ${toAnchor.x} ${toAnchor.y} `
 
       from = to
     }
@@ -310,8 +299,8 @@ export interface LaidOutGraph<V, E extends Edge<V>> {
   // Mapping from each vertex to its "rank"
   ranks: Map<V, number>
 }
-export function layoutGraph<V, E extends Edge<V>>(graph: Graph<V, E>): LaidOutGraph<V, E> {
-  const ranks = rankVertices(graph)
+export function layoutGraph<V, E extends Edge<V>>(graph: Graph<V, E>, roots: V[]): LaidOutGraph<V, E> {
+  const ranks = rankVertices(graph, roots)
   const { levels, edgeToLevelNodes } = ranksToLevels(ranks, graph.getEdges())
   const nodePositions = positionNodes(levels)
   const edgePaths = makeEdgePaths(edgeToLevelNodes, nodePositions)
