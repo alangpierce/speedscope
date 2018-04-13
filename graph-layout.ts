@@ -50,7 +50,7 @@ export function rankVertices<V, E extends Edge<V>>(graph: Graph<V, E>): Map<V, n
       // have a rank, it means there's a cycle.
       // TODO(jlfwong): I'm not sure if returning -1
       // here is correct
-      return -1
+      return -99
     }
     visited.add(v)
 
@@ -306,6 +306,9 @@ export interface LaidOutGraph<V, E extends Edge<V>> {
   // Mapping from each edge to a string representing its cubic bezier-curve based
   // SVG path.
   edgePaths: Map<E, string>
+
+  // Mapping from each vertex to its "rank"
+  ranks: Map<V, number>
 }
 export function layoutGraph<V, E extends Edge<V>>(graph: Graph<V, E>): LaidOutGraph<V, E> {
   const ranks = rankVertices(graph)
@@ -313,5 +316,5 @@ export function layoutGraph<V, E extends Edge<V>>(graph: Graph<V, E>): LaidOutGr
   const nodePositions = positionNodes(levels)
   const edgePaths = makeEdgePaths(edgeToLevelNodes, nodePositions)
 
-  return { levels, edgeToLevelNodes, nodePositions, edgePaths }
+  return { ranks, levels, edgeToLevelNodes, nodePositions, edgePaths }
 }

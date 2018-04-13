@@ -10,7 +10,7 @@ interface CallGraphViewProps {
 export class CallGraphView extends Component<CallGraphViewProps, {}> {
   render() {
     const { callGraph, laidOutCallGraph } = this.props
-    const { levels, nodePositions, edgePaths } = laidOutCallGraph
+    const { levels, nodePositions, edgePaths, ranks } = laidOutCallGraph
 
     const height = levels.length * 100
     const width = levels.reduce((max: number, level: any[]) => Math.max(level.length, max), 0) * 230
@@ -32,7 +32,7 @@ export class CallGraphView extends Component<CallGraphViewProps, {}> {
                 <text style={{
                   'alignment-baseline': 'hanging',
                   'font-size': '10px'
-                }} fill='#000000' > { `${node.vertex.frame.getTotalWeight()}: ${lastOf(node.vertex.frame.name.split('/'))}` }</text>
+                }} fill='#000000' > { `${ranks.get(node.vertex)}: ${lastOf(node.vertex.frame.name.split('/'))}` }</text>
               </g>
             })}
           </g>

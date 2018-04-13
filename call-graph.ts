@@ -38,7 +38,7 @@ export class CallGraph extends Graph<CallGraphVertex, CallGraphEdge> {
     // When displaying the call graph, we don't really want to display all nodes.
     // We only want to display the ones that contribute significantly to the total
     // weight of the graph, so we set a threshold.
-    const threshold = 0.01
+    const threshold = 0
     let ignoredDepth = 0
 
     const openFrame = (node: CallTreeNode, value: number) => {
